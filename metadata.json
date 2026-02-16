@@ -1,0 +1,8 @@
+{
+  "name": "CareerEdge AI: Resume Analyzer & Interviewer",
+  "description": "A comprehensive career suite that analyzes resumes for ATS compatibility, recommends career paths, and provides real-time AI mock interviews with facial expression analysis.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
