@@ -1,14 +1,17 @@
 
 import React, { useEffect, useRef, useState } from 'react';
-import { InterviewConfig, InterviewResult, InterviewQuestion } from '../types';
+import { InterviewConfig, InterviewResult, InterviewQuestion, UserProfile } from '../types';
 import { generateInterviewQuestions, evaluateFullInterview } from '../services/geminiService';
+import { db, auth } from '../firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 interface Props {
   config: InterviewConfig;
+  profile: UserProfile;
   onFinish: (result: InterviewResult) => void;
 }
 
-const InterviewRoom: React.FC<Props> = ({ config, onFinish }) => {
+const InterviewRoom: React.FC<Props> = ({ config, profile, onFinish }) => {
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [status, setStatus] = useState<'loading' | 'question' | 'recording' | 'reviewing' | 'submitting'>('loading');
@@ -40,7 +43,7 @@ const InterviewRoom: React.FC<Props> = ({ config, onFinish }) => {
           videoRef.current.srcObject = stream;
         }
         
-        const qs = await generateInterviewQuestions(config.domain, config.difficulty, config.questionCount, config.mode);
+        const qs = await generateInterviewQuestions(config.domain, config.difficulty, config.questionCount, config.mode, profile);
         if (mounted) {
           setQuestions(qs);
           setStatus('question');
@@ -153,7 +156,23 @@ const InterviewRoom: React.FC<Props> = ({ config, onFinish }) => {
       setStatus('question');
     } else {
       try {
-        const result = await evaluateFullInterview(config.domain, newAnswers, snapshots);
+        const result = await evaluateFullInterview(config.domain, newAnswers, snapshots, profile);
+        
+        // Save to Firestore if user is logged in
+        if (auth.currentUser) {
+          try {
+            await addDoc(collection(db, 'interviews'), {
+              uid: auth.currentUser.uid,
+              config: config,
+              result: result,
+              createdAt: serverTimestamp(),
+              id: crypto.randomUUID()
+            });
+          } catch (fsErr) {
+            console.error("Failed to save interview to Firestore:", fsErr);
+          }
+        }
+
         onFinish(result);
       } catch (err) {
         console.error("Evaluation failed:", err);

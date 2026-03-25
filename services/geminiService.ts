@@ -1,13 +1,15 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { ResumeAnalysis, InterviewQuestion, InterviewMode } from "../types";
+import { ResumeAnalysis, InterviewQuestion, InterviewMode, UserProfile } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export const analyzeResume = async (base64Data: string, mimeType: string, jobDescription?: string): Promise<ResumeAnalysis> => {
+export const analyzeResume = async (base64Data: string, mimeType: string, profile: UserProfile, jobDescription?: string): Promise<ResumeAnalysis> => {
   const jdPrompt = jobDescription 
     ? `Also, compare the resume against this Job Description: "${jobDescription}". Provide a match percentage and specific suitability feedback.` 
     : "No job description provided.";
+
+  const profileContext = `The user is currently a ${profile.currentRole} with ${profile.experienceYears} years of experience, targeting a ${profile.targetRole} role. Their skills include: ${profile.skills.join(', ')}.`;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
@@ -20,7 +22,7 @@ export const analyzeResume = async (base64Data: string, mimeType: string, jobDes
           }
         },
         {
-          text: `Analyze this resume and provide a detailed structured response for ATS scoring and career guidance. Suggest one primary recommended domain and 3-4 alternative focus areas. ${jdPrompt}`
+          text: `Analyze this resume and provide a detailed structured response for ATS scoring and career guidance. ${profileContext} Suggest one primary recommended domain and 3-4 alternative focus areas. ${jdPrompt}`
         }
       ]
     },
@@ -72,14 +74,16 @@ export const analyzeResume = async (base64Data: string, mimeType: string, jobDes
   return JSON.parse(response.text);
 };
 
-export const generateInterviewQuestions = async (domain: string, difficulty: string, count: number, mode: InterviewMode): Promise<InterviewQuestion[]> => {
+export const generateInterviewQuestions = async (domain: string, difficulty: string, count: number, mode: InterviewMode, profile: UserProfile): Promise<InterviewQuestion[]> => {
   const modeInstruction = mode === 'On-Campus' 
     ? `Include questions from the chosen domain (${domain}) AND fundamental CS subjects like Data Structures & Algorithms (DSA), Operating Systems (OS), Database Management Systems (DBMS), and Computer Networks (CN).` 
     : `Focus exclusively on technical and behavioral questions tailored specifically to the ${domain} role.`;
 
+  const profileContext = `The candidate is currently a ${profile.currentRole} with ${profile.experienceYears} years of experience, targeting a ${profile.targetRole} role. Their skills include: ${profile.skills.join(', ')}.`;
+
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Generate exactly ${count} interview questions for a ${difficulty} level role. Mode: ${mode}. ${modeInstruction} Provide a mix of technical and behavioral questions.`,
+    contents: `Generate exactly ${count} interview questions for a ${difficulty} level role. ${profileContext} Mode: ${mode}. ${modeInstruction} Provide a mix of technical and behavioral questions.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -102,10 +106,13 @@ export const generateInterviewQuestions = async (domain: string, difficulty: str
 export const evaluateFullInterview = async (
   domain: string, 
   qaPairs: { question: string, audioData: string }[], 
-  snapshots: string[]
+  snapshots: string[],
+  profile: UserProfile
 ): Promise<any> => {
+  const profileContext = `The candidate is currently a ${profile.currentRole} with ${profile.experienceYears} years of experience, targeting a ${profile.targetRole} role. Their skills include: ${profile.skills.join(', ')}.`;
+
   const parts: any[] = [
-    { text: `You are a professional technical interviewer for the domain: ${domain}.
+    { text: `You are a professional technical interviewer for the domain: ${domain}. ${profileContext}
     I am providing you with multiple audio recordings and snapshots of the candidate during the interview.
     
     CRITICAL INSTRUCTIONS:

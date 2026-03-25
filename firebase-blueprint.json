@@ -1,0 +1,61 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user information and career preferences.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique user ID from Firebase Auth." },
+        "email": { "type": "string", "format": "email", "description": "User's email address." },
+        "displayName": { "type": "string", "description": "User's display name." },
+        "photoURL": { "type": "string", "description": "User's profile photo URL." },
+        "currentRole": { "type": "string", "description": "User's current job title or status." },
+        "targetRole": { "type": "string", "description": "User's desired job title." },
+        "experienceYears": { "type": "number", "description": "Years of professional experience." },
+        "skills": { "type": "array", "items": { "type": "string" }, "description": "List of key skills." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the user account was created." }
+      },
+      "required": ["uid", "email", "currentRole", "targetRole"]
+    },
+    "Resume": {
+      "title": "Resume Analysis",
+      "description": "Stores analyzed resume data for a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique resume ID." },
+        "uid": { "type": "string", "description": "Owner's user ID." },
+        "fileName": { "type": "string", "description": "Original file name." },
+        "analysis": { "type": "object", "description": "The full analysis object returned by Gemini." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the resume was analyzed." }
+      },
+      "required": ["id", "uid", "analysis"]
+    },
+    "Interview": {
+      "title": "Interview Session",
+      "description": "Stores details of a mock interview session and its results.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique interview ID." },
+        "uid": { "type": "string", "description": "User ID of the interviewee." },
+        "config": { "type": "object", "description": "The configuration used for the interview." },
+        "result": { "type": "object", "description": "The final feedback and scores." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the interview took place." }
+      },
+      "required": ["id", "uid", "config", "result"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profile documents."
+    },
+    "/resumes/{resumeId}": {
+      "schema": "Resume",
+      "description": "Analyzed resumes."
+    },
+    "/interviews/{interviewId}": {
+      "schema": "Interview",
+      "description": "Mock interview results."
+    }
+  }
+}

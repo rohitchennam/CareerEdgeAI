@@ -1,4 +1,18 @@
 
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL?: string;
+  currentRole?: string;
+  targetRole?: string;
+  experienceYears: number;
+  skills: string[];
+  resumeUrl?: string;
+  resumeAnalysis?: ResumeAnalysis;
+  createdAt: any;
+}
+
 export interface ResumeAnalysis {
   atsScore: number;
   strengths: string[];
@@ -44,4 +58,20 @@ export interface InterviewResult {
   knowledgeGrasp: string;
   feedback: string;
   expressionAnalysis: string;
+}
+
+export interface SavedResume {
+  id: string;
+  uid: string;
+  fileName: string;
+  analysis: ResumeAnalysis;
+  createdAt: any; // Firestore Timestamp
+}
+
+export interface SavedInterview {
+  id: string;
+  uid: string;
+  config: InterviewConfig;
+  result: InterviewResult;
+  createdAt: any; // Firestore Timestamp
 }

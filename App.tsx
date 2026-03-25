@@ -4,14 +4,59 @@ import Header from './components/Header';
 import ResumeUpload from './components/ResumeUpload';
 import AnalysisDashboard from './components/AnalysisDashboard';
 import InterviewRoom from './components/InterviewRoom';
-import { ResumeAnalysis, InterviewConfig, InterviewResult, InterviewMode } from './types';
+import Login from './components/Login';
+import Dashboard from './components/Dashboard';
+import Onboarding from './components/Onboarding';
+import { auth, onAuthStateChanged, User, db } from './firebase';
+import { doc, getDoc, query, collection, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { FileText } from 'lucide-react';
+import { ResumeAnalysis, InterviewConfig, InterviewResult, InterviewMode, SavedResume, SavedInterview, UserProfile } from './types';
 
 const App: React.FC = () => {
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [analysis, setAnalysis] = useState<ResumeAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [view, setView] = useState<'home' | 'resumes' | 'interviews' | 'profile'>('home');
+  const [savedResumes, setSavedResumes] = useState<SavedResume[]>([]);
+  const [showConfig, setShowConfig] = useState(false);
   const [interviewConfig, setInterviewConfig] = useState<InterviewConfig | null>(null);
   const [interviewResult, setInterviewResult] = useState<InterviewResult | null>(null);
-  const [showConfig, setShowConfig] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        const docRef = doc(db, 'users', currentUser.uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          setProfile(docSnap.data() as UserProfile);
+        }
+      } else {
+        setProfile(null);
+      }
+      setIsAuthReady(true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch saved resumes for the selection list
+  useEffect(() => {
+    if (!user) {
+      setSavedResumes([]);
+      return;
+    }
+    const q = query(
+      collection(db, 'resumes'),
+      where('uid', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
+      setSavedResumes(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SavedResume)));
+    });
+    return () => unsub();
+  }, [user]);
 
   // Local state for config form
   const [selectedDomain, setSelectedDomain] = useState<string>('');
@@ -53,25 +98,89 @@ const App: React.FC = () => {
     setInterviewConfig(null);
     setInterviewResult(null);
     setShowConfig(false);
+    setView('home');
+  };
+
+  const handleSelectResume = (resume: SavedResume) => {
+    setAnalysis(resume.analysis);
+    setView('home');
+  };
+
+  const handleSelectInterview = (interview: SavedInterview) => {
+    setInterviewResult(interview.result);
+    setView('home');
   };
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <Header onReset={handleReset} />
+      <Header 
+        onReset={handleReset} 
+        onShowResumes={() => setView('resumes')}
+        onShowInterviews={() => setView('interviews')}
+        onShowProfile={() => setView('profile')}
+      />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        {!analysis && !isAnalyzing && (
+        {!isAuthReady ? (
+          <div className="flex items-center justify-center py-32">
+            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : !user ? (
+          <Login />
+        ) : !profile || view === 'profile' ? (
+          <Onboarding 
+            initialProfile={profile}
+            onComplete={(p) => { setProfile(p); setView('home'); }} 
+            onCancel={profile ? () => setView('home') : undefined}
+          />
+        ) : view === 'resumes' ? (
+          <Dashboard type="resumes" onSelectResume={handleSelectResume} onSelectInterview={handleSelectInterview} />
+        ) : view === 'interviews' ? (
+          <Dashboard type="interviews" onSelectResume={handleSelectResume} onSelectInterview={handleSelectInterview} />
+        ) : (
+          <>
+            {!analysis && !isAnalyzing && (
           <div className="text-center mb-12 animate-fade-in">
             <h1 className="text-5xl font-extrabold text-slate-900 tracking-tight">
               Bridge the Gap to Your <span className="text-indigo-600">Dream Career</span>
             </h1>
-            <p className="mt-4 text-xl text-slate-600 max-w-2xl mx-auto">
+            <p className="mt-4 text-xl text-slate-600 max-w-2xl mx-auto mb-12">
               Analyze your resume, discover your perfect career domain, and practice with real-time AI mock interviews.
             </p>
-            <ResumeUpload 
-              onAnalysisStart={() => setIsAnalyzing(true)} 
-              onAnalysisComplete={handleAnalysisComplete} 
-            />
+            
+            <div className="max-w-4xl mx-auto space-y-12">
+              {savedResumes.length > 0 && (
+                <div className="bg-white p-8 rounded-[32px] shadow-xl border border-slate-100 animate-fade-in">
+                  <h3 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
+                    <FileText className="w-5 h-5 text-indigo-600" />
+                    Saved Resumes
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {savedResumes.map(resume => (
+                      <button
+                        key={resume.id}
+                        onClick={() => handleSelectResume(resume)}
+                        className="text-left p-4 rounded-2xl border border-slate-50 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all group"
+                      >
+                        <p className="font-bold text-slate-800 truncate group-hover:text-indigo-600">{resume.fileName}</p>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
+                            {resume.createdAt?.toDate().toLocaleDateString()}
+                          </p>
+                          <span className="text-[10px] font-black text-indigo-600">ATS: {resume.analysis.atsScore}%</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <ResumeUpload 
+                profile={profile}
+                onAnalysisStart={() => setIsAnalyzing(true)} 
+                onAnalysisComplete={handleAnalysisComplete} 
+              />
+            </div>
           </div>
         )}
 
@@ -183,7 +292,20 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="pt-4">
+                <div className="pt-4 space-y-4">
+                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Update Context</p>
+                    <ResumeUpload 
+                      profile={profile!}
+                      compact={true}
+                      onAnalysisStart={() => setIsAnalyzing(true)} 
+                      onAnalysisComplete={(data) => {
+                        handleAnalysisComplete(data);
+                        if (data) setSelectedDomain(data.recommendedDomain.title);
+                      }} 
+                    />
+                  </div>
+                  
                   <button 
                     onClick={handleLaunchInterview}
                     className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-xl hover:-translate-y-1 active:scale-95"
@@ -205,62 +327,65 @@ const App: React.FC = () => {
         {interviewConfig && !interviewResult && (
           <InterviewRoom 
             config={interviewConfig} 
+            profile={profile}
             onFinish={(result) => { setInterviewResult(result); setInterviewConfig(null); }} 
           />
         )}
 
-        {interviewResult && (
-          <div className="max-w-4xl mx-auto space-y-8 animate-slide-up">
-            <div className="bg-white p-12 rounded-3xl shadow-xl border border-slate-100 text-center">
-              <h2 className="text-4xl font-extrabold text-slate-900">Interview Evaluation</h2>
-              <div className="flex justify-center mt-10">
-                <div className="relative w-48 h-48">
-                  <svg className="w-full h-full transform -rotate-90">
-                    <circle cx="96" cy="96" r="80" stroke="currentColor" strokeWidth="16" fill="transparent" className="text-slate-100" />
-                    <circle 
-                      cx="96" cy="96" r="80" stroke="currentColor" strokeWidth="16" fill="transparent" 
-                      strokeDasharray={2 * Math.PI * 80}
-                      strokeDashoffset={2 * Math.PI * 80 * (1 - (interviewResult.accuracy || 0) / 100)}
-                      className="text-indigo-600 transition-all duration-1000" 
-                    />
-                  </svg>
-                  <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-5xl font-black text-slate-900">{interviewResult.accuracy || 0}%</span>
-                    <span className="text-xs font-bold text-slate-400 uppercase">Accuracy</span>
+            {interviewResult && (
+              <div className="max-w-4xl mx-auto space-y-8 animate-slide-up">
+                <div className="bg-white p-12 rounded-3xl shadow-xl border border-slate-100 text-center">
+                  <h2 className="text-4xl font-extrabold text-slate-900">Interview Evaluation</h2>
+                  <div className="flex justify-center mt-10">
+                    <div className="relative w-48 h-48">
+                      <svg className="w-full h-full transform -rotate-90">
+                        <circle cx="96" cy="96" r="80" stroke="currentColor" strokeWidth="16" fill="transparent" className="text-slate-100" />
+                        <circle 
+                          cx="96" cy="96" r="80" stroke="currentColor" strokeWidth="16" fill="transparent" 
+                          strokeDasharray={2 * Math.PI * 80}
+                          strokeDashoffset={2 * Math.PI * 80 * (1 - (interviewResult.accuracy || 0) / 100)}
+                          className="text-indigo-600 transition-all duration-1000" 
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-5xl font-black text-slate-900">{interviewResult.accuracy || 0}%</span>
+                        <span className="text-xs font-bold text-slate-400 uppercase">Accuracy</span>
+                      </div>
+                    </div>
                   </div>
+
+                  <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
+                    <div className="bg-slate-50 p-8 rounded-2xl">
+                      <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        Knowledge Grasp
+                      </h3>
+                      <p className="text-slate-600 leading-relaxed">{interviewResult.knowledgeGrasp}</p>
+                    </div>
+                    <div className="bg-slate-50 p-8 rounded-2xl">
+                      <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        Expression Analysis
+                      </h3>
+                      <p className="text-slate-600 leading-relaxed">{interviewResult.expressionAnalysis}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 p-8 bg-indigo-50 rounded-2xl text-left border border-indigo-100">
+                     <h3 className="font-bold text-indigo-900 mb-2">Coach's Feedback</h3>
+                     <p className="text-indigo-800 italic leading-relaxed">"{interviewResult.feedback}"</p>
+                  </div>
+
+                  <button 
+                    onClick={() => setInterviewResult(null)}
+                    className="mt-12 px-10 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl"
+                  >
+                    Return to Dashboard
+                  </button>
                 </div>
               </div>
-
-              <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
-                <div className="bg-slate-50 p-8 rounded-2xl">
-                  <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    Knowledge Grasp
-                  </h3>
-                  <p className="text-slate-600 leading-relaxed">{interviewResult.knowledgeGrasp}</p>
-                </div>
-                <div className="bg-slate-50 p-8 rounded-2xl">
-                  <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                    <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                    Expression Analysis
-                  </h3>
-                  <p className="text-slate-600 leading-relaxed">{interviewResult.expressionAnalysis}</p>
-                </div>
-              </div>
-
-              <div className="mt-8 p-8 bg-indigo-50 rounded-2xl text-left border border-indigo-100">
-                 <h3 className="font-bold text-indigo-900 mb-2">Coach's Feedback</h3>
-                 <p className="text-indigo-800 italic leading-relaxed">"{interviewResult.feedback}"</p>
-              </div>
-
-              <button 
-                onClick={() => setInterviewResult(null)}
-                className="mt-12 px-10 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl"
-              >
-                Return to Dashboard
-              </button>
-            </div>
-          </div>
+            )}
+          </>
         )}
       </main>
 
