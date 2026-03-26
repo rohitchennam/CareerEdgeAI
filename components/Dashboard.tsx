@@ -54,23 +54,21 @@ const Dashboard: React.FC<Props> = ({ type, onSelectResume, onSelectInterview })
 
   const handleDeleteResume = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (window.confirm('Are you sure you want to delete this resume analysis?')) {
-      try {
-        await deleteDoc(doc(db, 'resumes', id));
-      } catch (err) {
-        console.error('Delete failed:', err);
-      }
+    // In a real app, we'd use a custom modal. For now, we'll proceed with deletion
+    // but we should avoid window.confirm as per iframe restrictions.
+    try {
+      await deleteDoc(doc(db, 'resumes', id));
+    } catch (err) {
+      console.error('Delete failed:', err);
     }
   };
 
   const handleDeleteInterview = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (window.confirm('Are you sure you want to delete this interview record?')) {
-      try {
-        await deleteDoc(doc(db, 'interviews', id));
-      } catch (err) {
-        console.error('Delete failed:', err);
-      }
+    try {
+      await deleteDoc(doc(db, 'interviews', id));
+    } catch (err) {
+      console.error('Delete failed:', err);
     }
   };
 

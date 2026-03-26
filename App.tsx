@@ -20,25 +20,34 @@ const App: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [view, setView] = useState<'home' | 'resumes' | 'interviews' | 'profile'>('home');
   const [savedResumes, setSavedResumes] = useState<SavedResume[]>([]);
+  const [selectedSavedResume, setSelectedSavedResume] = useState<SavedResume | null>(null);
   const [showConfig, setShowConfig] = useState(false);
   const [interviewConfig, setInterviewConfig] = useState<InterviewConfig | null>(null);
   const [interviewResult, setInterviewResult] = useState<InterviewResult | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    let unsubscribeProfile = () => {};
+    
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
         const docRef = doc(db, 'users', currentUser.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          setProfile(docSnap.data() as UserProfile);
-        }
+        unsubscribeProfile = onSnapshot(docRef, (docSnap) => {
+          if (docSnap.exists()) {
+            setProfile(docSnap.data() as UserProfile);
+          }
+          setIsAuthReady(true);
+        });
       } else {
         setProfile(null);
+        setIsAuthReady(true);
       }
-      setIsAuthReady(true);
     });
-    return () => unsubscribe();
+    
+    return () => {
+      unsubscribeAuth();
+      unsubscribeProfile();
+    };
   }, []);
 
   // Fetch saved resumes for the selection list
@@ -89,6 +98,7 @@ const App: React.FC = () => {
     setIsAnalyzing(false);
     if (data) {
       setAnalysis(data);
+      setSelectedSavedResume(null);
     }
   };
 
@@ -102,8 +112,15 @@ const App: React.FC = () => {
   };
 
   const handleSelectResume = (resume: SavedResume) => {
-    setAnalysis(resume.analysis);
+    setSelectedSavedResume(resume);
     setView('home');
+  };
+
+  const handleContinueWithSaved = () => {
+    if (selectedSavedResume) {
+      setAnalysis(selectedSavedResume.analysis);
+      setSelectedSavedResume(null);
+    }
   };
 
   const handleSelectInterview = (interview: SavedInterview) => {
@@ -148,37 +165,15 @@ const App: React.FC = () => {
               Analyze your resume, discover your perfect career domain, and practice with real-time AI mock interviews.
             </p>
             
-            <div className="max-w-4xl mx-auto space-y-12">
-              {savedResumes.length > 0 && (
-                <div className="bg-white p-8 rounded-[32px] shadow-xl border border-slate-100 animate-fade-in">
-                  <h3 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-indigo-600" />
-                    Saved Resumes
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {savedResumes.map(resume => (
-                      <button
-                        key={resume.id}
-                        onClick={() => handleSelectResume(resume)}
-                        className="text-left p-4 rounded-2xl border border-slate-50 hover:border-indigo-200 hover:bg-indigo-50/30 transition-all group"
-                      >
-                        <p className="font-bold text-slate-800 truncate group-hover:text-indigo-600">{resume.fileName}</p>
-                        <div className="flex items-center justify-between mt-1">
-                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">
-                            {resume.createdAt?.toDate().toLocaleDateString()}
-                          </p>
-                          <span className="text-[10px] font-black text-indigo-600">ATS: {resume.analysis.atsScore}%</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
+            <div className="max-w-4xl mx-auto">
               <ResumeUpload 
                 profile={profile}
                 onAnalysisStart={() => setIsAnalyzing(true)} 
                 onAnalysisComplete={handleAnalysisComplete} 
+                savedResumes={savedResumes}
+                selectedSavedResume={selectedSavedResume}
+                onSelectSavedResume={handleSelectResume}
+                onContinueWithSaved={handleContinueWithSaved}
               />
             </div>
           </div>

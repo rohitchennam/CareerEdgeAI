@@ -5,6 +5,57 @@ import { UserProfile, ResumeAnalysis } from '../types';
 import { User, Briefcase, Target, Award, ArrowRight, FileText, Upload, CheckCircle2, Loader2 } from 'lucide-react';
 import { analyzeResume } from '../services/geminiService';
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
 interface Props {
   initialProfile?: UserProfile | null;
   onComplete: (profile: UserProfile) => void;
@@ -15,7 +66,7 @@ const Onboarding: React.FC<Props> = ({ initialProfile, onComplete, onCancel }) =
   const [currentRole, setCurrentRole] = useState(initialProfile?.currentRole || '');
   const [targetRole, setTargetRole] = useState(initialProfile?.targetRole || '');
   const [experienceYears, setExperienceYears] = useState(initialProfile?.experienceYears || 0);
-  const [skills, setSkills] = useState(initialProfile?.skills.join(', ') || '');
+  const [skills, setSkills] = useState(initialProfile?.skills?.join(', ') || '');
   const [loading, setLoading] = useState(false);
   
   const [resumeFile, setResumeFile] = useState<File | null>(null);
@@ -35,27 +86,87 @@ const Onboarding: React.FC<Props> = ({ initialProfile, onComplete, onCancel }) =
     if (!auth.currentUser) return;
 
     setLoading(true);
-    const profile: any = {
-      uid: auth.currentUser.uid,
-      email: auth.currentUser.email || '',
-      displayName: auth.currentUser.displayName || '',
-      photoURL: auth.currentUser.photoURL || '',
-      experienceYears,
-      skills: skills.split(',').map(s => s.trim()).filter(s => s !== ''),
-      createdAt: serverTimestamp(),
-      currentRole: currentRole || '',
-      targetRole: targetRole || '',
-    };
-
-    if (resumeFile) {
-      profile.resumeName = resumeFile.name;
-    }
-
     try {
-      await setDoc(doc(db, 'users', auth.currentUser.uid), profile);
-      onComplete(profile);
+      const profileData: any = {
+        uid: auth.currentUser.uid,
+        email: auth.currentUser.email || '',
+        displayName: auth.currentUser.displayName || '',
+        photoURL: auth.currentUser.photoURL || '',
+        experienceYears,
+        skills: skills.split(',').map(s => s.trim()).filter(s => s !== ''),
+        currentRole: currentRole || '',
+        targetRole: targetRole || '',
+      };
+
+      if (!initialProfile) {
+        profileData.createdAt = serverTimestamp();
+      } else {
+        // Ensure createdAt is present for security rules even on merge
+        profileData.createdAt = initialProfile.createdAt;
+      }
+
+      if (resumeFile) {
+        profileData.resumeName = resumeFile.name;
+        
+        // If we have a resume, we should also save it to the resumes collection
+        // But we need an analysis first. Since we don't analyze here, 
+        // we'll just save the profile and let the user analyze it later from the dashboard.
+        // OR we can do a quick analysis now. Let's do a quick analysis if a file is uploaded.
+        try {
+          setIsAnalyzing(true);
+          
+          // Convert file to base64
+          const reader = new FileReader();
+          const base64Promise = new Promise<string>((resolve, reject) => {
+            reader.onload = () => {
+              const result = reader.result as string;
+              const base64 = result.split(',')[1];
+              resolve(base64);
+            };
+            reader.onerror = reject;
+          });
+          reader.readAsDataURL(resumeFile);
+          const base64Data = await base64Promise;
+
+          const analysisResult = await analyzeResume(base64Data, resumeFile.type, profileData as UserProfile);
+          const resumeId = crypto.randomUUID();
+          const resumeData = {
+            id: resumeId,
+            uid: auth.currentUser.uid,
+            fileName: resumeFile.name,
+            analysis: analysisResult,
+            createdAt: serverTimestamp(),
+          };
+          
+          try {
+            await setDoc(doc(db, 'resumes', resumeId), resumeData);
+          } catch (error) {
+            handleFirestoreError(error, OperationType.CREATE, `resumes/${resumeId}`);
+          }
+        } catch (error) {
+          console.error('Resume analysis failed:', error);
+          // Continue anyway, just without the resume analysis
+        } finally {
+          setIsAnalyzing(false);
+        }
+      }
+
+      try {
+        await setDoc(doc(db, 'users', auth.currentUser.uid), profileData, { merge: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${auth.currentUser.uid}`);
+      }
+      
+      // For local state, we use a Date instead of serverTimestamp sentinel
+      const localProfile = {
+        ...profileData,
+        createdAt: initialProfile?.createdAt || new Date()
+      };
+      
+      onComplete(localProfile as UserProfile);
     } catch (error) {
       console.error('Onboarding failed:', error);
+      alert('Failed to save profile. Please check your connection and try again.');
     } finally {
       setLoading(false);
     }

@@ -19,7 +19,7 @@
     },
     "Resume": {
       "title": "Resume Analysis",
-      "description": "Stores analyzed resume data for a user.",
+      "description": "Stores analyzed resume data for a user. A user can have multiple resumes.",
       "type": "object",
       "properties": {
         "id": { "type": "string", "description": "Unique resume ID." },
@@ -28,7 +28,7 @@
         "analysis": { "type": "object", "description": "The full analysis object returned by Gemini." },
         "createdAt": { "type": "string", "format": "date-time", "description": "When the resume was analyzed." }
       },
-      "required": ["id", "uid", "analysis"]
+      "required": ["id", "uid", "analysis", "createdAt"]
     },
     "Interview": {
       "title": "Interview Session",
