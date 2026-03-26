@@ -37,6 +37,7 @@ export interface ResumeAnalysis {
     missingKeywords: string[];
     suitabilityFeedback: string;
   };
+  skillsFound: string[];
 }
 
 export interface InterviewQuestion {

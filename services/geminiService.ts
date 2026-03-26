@@ -56,6 +56,7 @@ export const analyzeResume = async (base64Data: string, mimeType: string, profil
             },
             required: ["title", "justification", "potentialRoles", "alternativeDomains"]
           },
+          skillsFound: { type: Type.ARRAY, items: { type: Type.STRING } },
           jdMatch: {
             type: Type.OBJECT,
             properties: {
@@ -136,15 +137,17 @@ export const evaluateFullInterview = async (
   });
 
   parts.push({ text: "\nAttached snapshots for facial expression analysis during the interview:\n" });
-
-  snapshots.slice(-8).forEach(data => {
-    parts.push({
-      inlineData: {
-        data: data,
-        mimeType: 'image/jpeg'
-      }
+  
+  if (snapshots && snapshots.length > 0) {
+    snapshots.slice(-8).forEach(data => {
+      parts.push({
+        inlineData: {
+          data: data,
+          mimeType: 'image/jpeg'
+        }
+      });
     });
-  });
+  }
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',

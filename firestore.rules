@@ -58,40 +58,30 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        ((request.auth.token.email == "rohitchennam1@gmail.com" && request.auth.token.email_verified == true) ||
-         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin'));
+        (request.auth.token.email == "rohitchennam1@gmail.com" && request.auth.token.email_verified == true);
     }
 
-    function isValidEmail(email) {
-      return email is string &&
-        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    function isUserAdmin() {
+      return isAdmin() || (isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin');
     }
 
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
              hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'currentRole', 'targetRole', 'experienceYears', 'skills', 'createdAt', 'resumeName', 'resumeUrl', 'resumeAnalysis', 'role']) &&
-             data.uid is string && data.uid.size() > 0 &&
+             data.uid is string && data.uid == request.auth.uid &&
              data.email is string && isValidEmail(data.email) &&
-             (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 500)) &&
-             (!('currentRole' in data) || (data.currentRole is string && data.currentRole.size() < 100)) &&
-             (!('targetRole' in data) || (data.targetRole is string && data.targetRole.size() < 100)) &&
              (!('experienceYears' in data) || (data.experienceYears is number && data.experienceYears >= 0)) &&
-             (!('skills' in data) || (data.skills is list && data.skills.size() < 50)) &&
-             (!('resumeName' in data) || (data.resumeName is string && data.resumeName.size() < 200)) &&
-             (!('resumeUrl' in data) || (data.resumeUrl is string && data.resumeUrl.size() < 500)) &&
-             (!('resumeAnalysis' in data) || (data.resumeAnalysis is map)) &&
-             (!('role' in data) || (data.role in ['user', 'admin'])) &&
+             (!('skills' in data) || (data.skills is list)) &&
              data.createdAt is timestamp;
     }
 
     function isValidResume(data) {
       return data.keys().hasAll(['id', 'uid', 'analysis', 'createdAt']) &&
              hasOnlyAllowedFields(['id', 'uid', 'fileName', 'analysis', 'createdAt']) &&
-             data.id is string && data.id.size() > 0 &&
+             data.id is string &&
              data.uid == request.auth.uid &&
-             (!('fileName' in data) || (data.fileName is string && data.fileName.size() < 255)) &&
              data.analysis is map &&
              data.createdAt is timestamp;
     }
@@ -99,7 +89,7 @@ service cloud.firestore {
     function isValidInterview(data) {
       return data.keys().hasAll(['id', 'uid', 'config', 'result', 'createdAt']) &&
              hasOnlyAllowedFields(['id', 'uid', 'config', 'result', 'createdAt']) &&
-             data.id is string && data.id.size() > 0 &&
+             data.id is string &&
              data.uid == request.auth.uid &&
              data.config is map && data.result is map &&
              data.createdAt is timestamp;
@@ -117,21 +107,20 @@ service cloud.firestore {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && (!('role' in request.resource.data) || request.resource.data.role == 'user');
       allow update: if isOwner(userId) && isValidUser(request.resource.data) && 
-                      request.resource.data.uid == resource.data.uid && 
-                      request.resource.data.get('role', 'user') == resource.data.get('role', 'user');
+                      (!('role' in request.resource.data) || request.resource.data.role == resource.data.get('role', 'user'));
     }
 
     match /resumes/{resumeId} {
       allow read: if isDocOwner() || isAdmin();
       allow create: if isAuthenticated() && isValidResume(request.resource.data);
-      allow update: if isDocOwner() && isValidResume(request.resource.data) && request.resource.data.uid == resource.data.uid;
+      allow update: if isDocOwner() && isValidResume(request.resource.data);
       allow delete: if isDocOwner() || isAdmin();
     }
 
     match /interviews/{interviewId} {
       allow read: if isDocOwner() || isAdmin();
       allow create: if isAuthenticated() && isValidInterview(request.resource.data);
-      allow update: if isDocOwner() && isValidInterview(request.resource.data) && request.resource.data.uid == resource.data.uid;
+      allow update: if isDocOwner() && isValidInterview(request.resource.data);
       allow delete: if isDocOwner() || isAdmin();
     }
     // ===============================================================

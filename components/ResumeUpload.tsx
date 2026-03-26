@@ -4,12 +4,13 @@ import { analyzeResume } from '../services/geminiService';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { UserProfile, SavedResume } from '../types';
-import { FileText, Upload } from 'lucide-react';
+import { FileText, Upload, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Props {
   profile: UserProfile;
   onAnalysisStart: () => void;
-  onAnalysisComplete: (data: any) => void;
+  onAnalysisComplete: (data: any, fileName?: string) => void;
   compact?: boolean;
   savedResumes?: SavedResume[];
   selectedSavedResume?: SavedResume | null;
@@ -76,7 +77,7 @@ const ResumeUpload: React.FC<Props> = ({
           }
         }
 
-        onAnalysisComplete(result);
+        onAnalysisComplete(result, selectedFile.name);
       } catch (err) {
         console.error("Analysis failed:", err);
         alert("Failed to analyze resume. Please ensure your API key is valid.");
@@ -95,7 +96,9 @@ const ResumeUpload: React.FC<Props> = ({
 
   if (compact) {
     return (
-      <div 
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files[0]) handleFileSelect(e.dataTransfer.files[0]); }}
@@ -112,28 +115,43 @@ const ResumeUpload: React.FC<Props> = ({
           onChange={(e) => e.target.files?.[0] && handleFileSelect(e.target.files[0])}
         />
         <div className="flex items-center justify-center gap-3">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-md shadow-indigo-100">
-            <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-          </div>
-          <p className="text-sm font-bold text-slate-700">{selectedFile ? selectedFile.name : 'Upload New Resume'}</p>
+          <motion.div 
+            animate={selectedFile ? { scale: [1, 1.2, 1] } : {}}
+            className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center shadow-md shadow-indigo-100"
+          >
+            {selectedFile ? (
+              <CheckCircle2 className="w-4 h-4 text-white" />
+            ) : (
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            )}
+          </motion.div>
+          <p className="text-sm font-bold text-slate-700 truncate max-w-[150px]">{selectedFile ? selectedFile.name : 'Upload New Resume'}</p>
         </div>
         {selectedFile && (
-          <button
+          <motion.button
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={(e) => { e.stopPropagation(); handleContinue(); }}
             disabled={isAnalyzing}
             className="mt-3 w-full py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs hover:bg-indigo-700 transition-all disabled:opacity-50"
           >
             {isAnalyzing ? 'Analyzing...' : 'Continue'}
-          </button>
+          </motion.button>
         )}
-      </div>
+      </motion.div>
     );
   }
 
   return (
-    <div className="max-w-4xl mx-auto mt-12 p-10 bg-white rounded-[40px] shadow-2xl border border-slate-100 animate-fade-in">
+    <motion.div 
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="max-w-4xl mx-auto mt-12 p-10 bg-white rounded-[40px] shadow-2xl border border-slate-100"
+    >
       <div className="text-center mb-12">
         <h2 className="text-4xl font-black text-slate-900 tracking-tight">AI Resume Profiler</h2>
         <p className="text-slate-500 mt-2 text-lg">Upload your resume and optionally add a Job Description for a match report.</p>
@@ -164,8 +182,10 @@ const ResumeUpload: React.FC<Props> = ({
             ) : (
               <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-1">
                 {savedResumes.map(resume => (
-                  <button
+                  <motion.button
                     key={resume.id}
+                    whileHover={{ scale: 1.02, x: 5 }}
+                    whileTap={{ scale: 0.98 }}
                     onClick={() => {
                       if (onSelectSavedResume) onSelectSavedResume(resume);
                       setSelectedFile(null); // Clear file selection if saved resume is picked
@@ -183,14 +203,15 @@ const ResumeUpload: React.FC<Props> = ({
                       </p>
                       <span className="text-[9px] font-black text-indigo-600">ATS: {resume.analysis.atsScore}%</span>
                     </div>
-                  </button>
+                  </motion.button>
                 ))}
               </div>
             )}
           </div>
 
           {/* Drop Zone Column */}
-          <div
+          <motion.div
+            whileHover={{ scale: 1.01 }}
             onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files[0]) handleFileSelect(e.dataTransfer.files[0]); }}
@@ -199,10 +220,6 @@ const ResumeUpload: React.FC<Props> = ({
             }`}
             onClick={() => {
               document.getElementById('resume-input')?.click();
-              if (onSelectSavedResume) {
-                // We need a way to clear the saved resume selection
-                // I'll handle this in App.tsx by passing a specific function or just null
-              }
             }}
           >
             <input
@@ -213,45 +230,51 @@ const ResumeUpload: React.FC<Props> = ({
               onChange={(e) => {
                 if (e.target.files?.[0]) {
                   handleFileSelect(e.target.files[0]);
-                  // Clear saved resume selection
                 }
               }}
             />
             <div className="space-y-4">
-              <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto transition-all ${
+              <motion.div 
+                animate={selectedFile ? { scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] } : {}}
+                className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto transition-all ${
                 selectedFile ? 'bg-green-500 shadow-green-100' : 'bg-indigo-600 shadow-indigo-100'
               } shadow-lg`}>
                 {selectedFile ? (
-                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
-                  </svg>
+                  <CheckCircle2 className="w-7 h-7 text-white" />
                 ) : (
                   <Upload className="w-7 h-7 text-white" />
                 )}
-              </div>
+              </motion.div>
               <div>
                 <p className="text-sm font-bold text-slate-800">
                   {selectedFile ? selectedFile.name : 'Drop your resume PDF/JPG'}
                 </p>
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
 
-        {(selectedFile || selectedSavedResume) && (
-          <button
-            onClick={() => {
-              if (selectedFile) handleContinue();
-              else if (onContinueWithSaved) onContinueWithSaved();
-            }}
-            disabled={isAnalyzing}
-            className="w-full py-5 bg-indigo-600 text-white rounded-[24px] font-black text-xl hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-200 flex items-center justify-center gap-3 active:scale-[0.98] disabled:opacity-50"
-          >
-            {isAnalyzing ? 'Analyzing...' : `Continue with ${selectedFile?.name || selectedSavedResume?.fileName}`}
-          </button>
-        )}
+        <AnimatePresence>
+          {(selectedFile || selectedSavedResume) && (
+            <motion.button
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              whileHover={{ scale: 1.02, backgroundColor: '#4338ca' }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => {
+                if (selectedFile) handleContinue();
+                else if (onContinueWithSaved) onContinueWithSaved();
+              }}
+              disabled={isAnalyzing}
+              className="w-full py-5 bg-indigo-600 text-white rounded-[24px] font-black text-xl transition-all shadow-2xl shadow-indigo-200 flex items-center justify-center gap-3 disabled:opacity-50"
+            >
+              {isAnalyzing ? 'Analyzing...' : `Continue with ${selectedFile?.name || selectedSavedResume?.fileName}`}
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
-    </div>
+    </motion.div>
   );
 };
 

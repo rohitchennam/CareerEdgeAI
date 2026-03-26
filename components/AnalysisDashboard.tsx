@@ -2,6 +2,7 @@
 import React from 'react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar } from 'recharts';
 import { ResumeAnalysis } from '../types';
+import { motion } from 'framer-motion';
 
 interface Props {
   data: ResumeAnalysis;
@@ -40,15 +41,28 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onStartInterview }) => {
     <div className="space-y-8 pb-20 max-w-7xl mx-auto">
       {/* Hero Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-1 bg-white p-10 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center justify-center text-center">
+        <motion.div 
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="lg:col-span-1 bg-white p-10 rounded-3xl shadow-xl border border-slate-100 flex flex-col items-center justify-center text-center"
+        >
           <h3 className="text-slate-400 font-bold uppercase tracking-widest text-xs">ATS Optimization Score</h3>
-          <div className={`text-8xl font-black mt-4 tracking-tighter ${getColorClass(data.atsScore)}`}>
+          <motion.div 
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.2, type: 'spring' }}
+            className={`text-8xl font-black mt-4 tracking-tighter ${getColorClass(data.atsScore)}`}
+          >
             {data.atsScore}<span className="text-3xl text-slate-300">/100</span>
-          </div>
+          </motion.div>
           <p className="mt-6 text-slate-500 italic text-sm leading-relaxed px-4">"{data.executiveSummary}"</p>
-        </div>
+        </motion.div>
 
-        <div className="lg:col-span-2 bg-white p-10 rounded-3xl shadow-xl border border-slate-100">
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="lg:col-span-2 bg-white p-10 rounded-3xl shadow-xl border border-slate-100"
+        >
           <h3 className="text-slate-800 font-black text-xl mb-8">Metric Deep-Dive</h3>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -66,21 +80,27 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onStartInterview }) => {
               </RadarChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </motion.div>
       </div>
 
       {/* JD Match Section (Conditional) */}
       {data.jdMatch && (
-        <div className="bg-white p-10 rounded-3xl shadow-xl border border-indigo-100 animate-slide-up">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-white p-10 rounded-3xl shadow-xl border border-indigo-100"
+        >
           <div className="flex flex-col md:flex-row gap-12 items-center">
             <div className="shrink-0 flex flex-col items-center">
               <div className="relative w-40 h-40">
                 <svg className="w-full h-full transform -rotate-90">
                   <circle cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="12" fill="transparent" className="text-slate-100" />
-                  <circle 
+                  <motion.circle 
+                    initial={{ strokeDashoffset: 2 * Math.PI * 70 }}
+                    animate={{ strokeDashoffset: 2 * Math.PI * 70 * (1 - (data.jdMatch.matchPercentage || 0) / 100) }}
+                    transition={{ duration: 1.5, ease: "easeOut" }}
                     cx="80" cy="80" r="70" stroke="currentColor" strokeWidth="12" fill="transparent" 
                     strokeDasharray={2 * Math.PI * 70}
-                    strokeDashoffset={2 * Math.PI * 70 * (1 - (data.jdMatch.matchPercentage || 0) / 100)}
                     className={`${getMatchColor(data.jdMatch.matchPercentage)} transition-all duration-1000`} 
                   />
                 </svg>
@@ -99,17 +119,28 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onStartInterview }) => {
                 <h4 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-3">Missing Critical Keywords</h4>
                 <div className="flex flex-wrap gap-2">
                   {data.jdMatch.missingKeywords.map(kw => (
-                    <span key={kw} className="px-3 py-1 bg-rose-50 text-rose-600 rounded-full text-xs font-bold border border-rose-100">{kw}</span>
+                    <motion.span 
+                      key={kw} 
+                      whileHover={{ scale: 1.1 }}
+                      className="px-3 py-1 bg-rose-50 text-rose-600 rounded-full text-xs font-bold border border-rose-100"
+                    >
+                      {kw}
+                    </motion.span>
                   ))}
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Domain Recommendation */}
-      <div className="bg-indigo-600 text-white p-12 rounded-3xl shadow-2xl flex flex-col md:flex-row items-center gap-12 relative overflow-hidden">
+      <motion.div 
+        initial={{ opacity: 0, y: 30 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true }}
+        className="bg-indigo-600 text-white p-12 rounded-3xl shadow-2xl flex flex-col md:flex-row items-center gap-12 relative overflow-hidden"
+      >
         <div className="absolute top-0 right-0 p-4 opacity-10">
           <svg className="w-64 h-64" fill="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
         </div>
@@ -119,23 +150,36 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onStartInterview }) => {
           <p className="mt-6 text-indigo-100 text-xl font-medium leading-relaxed max-w-2xl">{data.recommendedDomain.justification}</p>
           <div className="mt-8 flex flex-wrap gap-3">
             {data.recommendedDomain.potentialRoles.map(role => (
-              <span key={role} className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl text-sm font-bold border border-white/20">{role}</span>
+              <motion.span 
+                key={role} 
+                whileHover={{ scale: 1.05, backgroundColor: 'rgba(255, 255, 255, 0.2)' }}
+                className="bg-white/10 backdrop-blur-md px-4 py-2 rounded-xl text-sm font-bold border border-white/20"
+              >
+                {role}
+              </motion.span>
             ))}
           </div>
         </div>
         <div className="shrink-0 relative z-10">
-          <button 
+          <motion.button 
+            whileHover={{ scale: 1.05, y: -5 }}
+            whileTap={{ scale: 0.95 }}
             onClick={onStartInterview}
-            className="px-10 py-5 bg-white text-indigo-600 rounded-2xl font-black text-xl hover:bg-slate-50 transition-all shadow-2xl hover:-translate-y-2 active:scale-95"
+            className="px-10 py-5 bg-white text-indigo-600 rounded-2xl font-black text-xl shadow-2xl transition-all"
           >
             Launch Career Lab
-          </button>
+          </motion.button>
         </div>
-      </div>
+      </motion.div>
 
       {/* Details Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        <section className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 flex flex-col">
+        <motion.section 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 flex flex-col"
+        >
           <h4 className="font-black text-emerald-600 flex items-center gap-3 mb-6 text-lg uppercase tracking-wider">
             <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -144,12 +188,26 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onStartInterview }) => {
           </h4>
           <ul className="space-y-4 flex-1">
             {data.strengths.map((s, i) => (
-              <li key={i} className="text-slate-600 text-sm font-medium leading-relaxed pl-6 relative before:content-[''] before:absolute before:left-0 before:top-2 before:w-2 before:h-2 before:bg-emerald-400 before:rounded-full">{s}</li>
+              <motion.li 
+                key={i} 
+                initial={{ opacity: 0, x: -10 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.1 }}
+                className="text-slate-600 text-sm font-medium leading-relaxed pl-6 relative before:content-[''] before:absolute before:left-0 before:top-2 before:w-2 before:h-2 before:bg-emerald-400 before:rounded-full"
+              >
+                {s}
+              </motion.li>
             ))}
           </ul>
-        </section>
+        </motion.section>
 
-        <section className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 flex flex-col">
+        <motion.section 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.1 }}
+          className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 flex flex-col"
+        >
           <h4 className="font-black text-rose-600 flex items-center gap-3 mb-6 text-lg uppercase tracking-wider">
             <div className="w-8 h-8 rounded-lg bg-rose-50 flex items-center justify-center">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -158,12 +216,26 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onStartInterview }) => {
           </h4>
           <ul className="space-y-4 flex-1">
             {data.weaknesses.map((w, i) => (
-              <li key={i} className="text-slate-600 text-sm font-medium leading-relaxed pl-6 relative before:content-[''] before:absolute before:left-0 before:top-2 before:w-2 before:h-2 before:bg-rose-400 before:rounded-full">{w}</li>
+              <motion.li 
+                key={i} 
+                initial={{ opacity: 0, x: -10 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.1 }}
+                className="text-slate-600 text-sm font-medium leading-relaxed pl-6 relative before:content-[''] before:absolute before:left-0 before:top-2 before:w-2 before:h-2 before:bg-rose-400 before:rounded-full"
+              >
+                {w}
+              </motion.li>
             ))}
           </ul>
-        </section>
+        </motion.section>
 
-        <section className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 flex flex-col">
+        <motion.section 
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ delay: 0.2 }}
+          className="bg-white p-8 rounded-3xl shadow-xl border border-slate-100 flex flex-col"
+        >
           <h4 className="font-black text-amber-600 flex items-center gap-3 mb-6 text-lg uppercase tracking-wider">
             <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -172,10 +244,18 @@ const AnalysisDashboard: React.FC<Props> = ({ data, onStartInterview }) => {
           </h4>
           <ul className="space-y-4 flex-1">
             {data.improvements.map((imp, i) => (
-              <li key={i} className="text-slate-600 text-sm font-medium leading-relaxed pl-6 relative before:content-[''] before:absolute before:left-0 before:top-2 before:w-2 before:h-2 before:bg-amber-400 before:rounded-full">{imp}</li>
+              <motion.li 
+                key={i} 
+                initial={{ opacity: 0, x: -10 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.1 }}
+                className="text-slate-600 text-sm font-medium leading-relaxed pl-6 relative before:content-[''] before:absolute before:left-0 before:top-2 before:w-2 before:h-2 before:bg-amber-400 before:rounded-full"
+              >
+                {imp}
+              </motion.li>
             ))}
           </ul>
-        </section>
+        </motion.section>
       </div>
     </div>
   );

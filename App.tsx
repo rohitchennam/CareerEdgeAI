@@ -1,16 +1,79 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Component } from 'react';
 import Header from './components/Header';
 import ResumeUpload from './components/ResumeUpload';
 import AnalysisDashboard from './components/AnalysisDashboard';
 import InterviewRoom from './components/InterviewRoom';
+import InterviewConfigPage from './components/InterviewConfig';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import Onboarding from './components/Onboarding';
 import { auth, onAuthStateChanged, User, db } from './firebase';
 import { doc, getDoc, query, collection, where, orderBy, onSnapshot } from 'firebase/firestore';
-import { FileText } from 'lucide-react';
+import { FileText, ArrowRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ResumeAnalysis, InterviewConfig, InterviewResult, InterviewMode, SavedResume, SavedInterview, UserProfile } from './types';
+
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: any;
+}
+
+class ErrorBoundary extends Component<any, any> {
+  public state: any = { hasError: false, error: null };
+
+  constructor(props: any) {
+    super(props);
+  }
+
+  static getDerivedStateFromError(error: any): any {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      let displayMessage = "Something went wrong.";
+      if (this.state.error && this.state.error.message) {
+        try {
+          const parsed = JSON.parse(this.state.error.message);
+          if (parsed.error) displayMessage = `Firestore Error: ${parsed.error}`;
+        } catch (e) {
+          displayMessage = this.state.error.message;
+        }
+      }
+
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+          <div className="max-w-md w-full bg-white p-8 rounded-[32px] shadow-2xl border border-slate-100 text-center">
+            <div className="w-16 h-16 bg-rose-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 mb-4">Application Error</h2>
+            <p className="text-slate-600 mb-8">{displayMessage}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+            >
+              Reload Application
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (this as any).props.children;
+  }
+}
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -24,18 +87,33 @@ const App: React.FC = () => {
   const [showConfig, setShowConfig] = useState(false);
   const [interviewConfig, setInterviewConfig] = useState<InterviewConfig | null>(null);
   const [interviewResult, setInterviewResult] = useState<InterviewResult | null>(null);
+  const [currentResumeName, setCurrentResumeName] = useState<string>('');
+  const [showHero, setShowHero] = useState(true);
 
   useEffect(() => {
     let unsubscribeProfile = () => {};
     
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      
+      // Reset UI state on any auth change (login/logout)
+      setAnalysis(null);
+      setIsAnalyzing(false);
+      setInterviewConfig(null);
+      setInterviewResult(null);
+      setShowConfig(false);
+      setView('home');
+      setShowHero(true);
+
       if (currentUser) {
         const docRef = doc(db, 'users', currentUser.uid);
         unsubscribeProfile = onSnapshot(docRef, (docSnap) => {
           if (docSnap.exists()) {
             setProfile(docSnap.data() as UserProfile);
           }
+          setIsAuthReady(true);
+        }, (error) => {
+          console.error("Profile snapshot error:", error);
           setIsAuthReady(true);
         });
       } else {
@@ -63,42 +141,27 @@ const App: React.FC = () => {
     );
     const unsub = onSnapshot(q, (snapshot) => {
       setSavedResumes(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SavedResume)));
+    }, (error) => {
+      console.error("Resumes snapshot error:", error);
     });
     return () => unsub();
   }, [user]);
-
-  // Local state for config form
-  const [selectedDomain, setSelectedDomain] = useState<string>('');
-  const [selectedMode, setSelectedMode] = useState<InterviewMode>('Off-Campus');
-  const [selectedDifficulty, setSelectedDifficulty] = useState<InterviewConfig['difficulty']>('Mid-Level');
-  const [questionCount, setQuestionCount] = useState(5);
-
-  useEffect(() => {
-    if (analysis) {
-      setSelectedDomain(analysis.recommendedDomain.title);
-    }
-  }, [analysis]);
 
   const handleStartInterview = () => {
     setShowConfig(true);
   };
 
-  const handleLaunchInterview = () => {
-    const config: InterviewConfig = {
-      domain: selectedDomain || (analysis?.recommendedDomain.title || 'General'),
-      difficulty: selectedDifficulty,
-      questionCount: questionCount,
-      mode: selectedMode
-    };
+  const handleLaunchInterview = (config: InterviewConfig) => {
     setInterviewConfig(config);
     setShowConfig(false);
   };
 
-  const handleAnalysisComplete = (data: ResumeAnalysis | null) => {
+  const handleAnalysisComplete = (data: ResumeAnalysis | null, fileName?: string) => {
     setIsAnalyzing(false);
     if (data) {
       setAnalysis(data);
       setSelectedSavedResume(null);
+      if (fileName) setCurrentResumeName(fileName);
     }
   };
 
@@ -109,6 +172,7 @@ const App: React.FC = () => {
     setInterviewResult(null);
     setShowConfig(false);
     setView('home');
+    setShowHero(true);
   };
 
   const handleSelectResume = (resume: SavedResume) => {
@@ -119,6 +183,7 @@ const App: React.FC = () => {
   const handleContinueWithSaved = () => {
     if (selectedSavedResume) {
       setAnalysis(selectedSavedResume.analysis);
+      setCurrentResumeName(selectedSavedResume.fileName);
       setSelectedSavedResume(null);
     }
   };
@@ -129,7 +194,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-slate-50 flex flex-col">
       <Header 
         onReset={handleReset} 
         onShowResumes={() => setView('resumes')}
@@ -137,7 +203,7 @@ const App: React.FC = () => {
         onShowProfile={() => setView('profile')}
       />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex-1">
         {!isAuthReady ? (
           <div className="flex items-center justify-center py-32">
             <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
@@ -151,42 +217,101 @@ const App: React.FC = () => {
             onCancel={profile ? () => setView('home') : undefined}
           />
         ) : view === 'resumes' ? (
-          <Dashboard type="resumes" onSelectResume={handleSelectResume} onSelectInterview={handleSelectInterview} />
+          <Dashboard 
+            type="resumes" 
+            onSelectResume={handleSelectResume} 
+            onSelectInterview={handleSelectInterview} 
+            onAddResume={() => { setView('home'); setShowHero(false); setAnalysis(null); }}
+          />
         ) : view === 'interviews' ? (
           <Dashboard type="interviews" onSelectResume={handleSelectResume} onSelectInterview={handleSelectInterview} />
         ) : (
           <>
             {!analysis && !isAnalyzing && (
-          <div className="text-center mb-12 animate-fade-in">
-            <h1 className="text-5xl font-extrabold text-slate-900 tracking-tight">
-              Bridge the Gap to Your <span className="text-indigo-600">Dream Career</span>
-            </h1>
-            <p className="mt-4 text-xl text-slate-600 max-w-2xl mx-auto mb-12">
-              Analyze your resume, discover your perfect career domain, and practice with real-time AI mock interviews.
-            </p>
-            
-            <div className="max-w-4xl mx-auto">
-              <ResumeUpload 
-                profile={profile}
-                onAnalysisStart={() => setIsAnalyzing(true)} 
-                onAnalysisComplete={handleAnalysisComplete} 
-                savedResumes={savedResumes}
-                selectedSavedResume={selectedSavedResume}
-                onSelectSavedResume={handleSelectResume}
-                onContinueWithSaved={handleContinueWithSaved}
-              />
-            </div>
-          </div>
-        )}
+              <div className="text-center mb-12">
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6 }}
+                >
+                  <h1 className="text-6xl font-black text-slate-900 tracking-tight leading-tight mb-6">
+                    Bridge the Gap to Your <span className="text-indigo-600">Dream Career</span>
+                  </h1>
+                  <p className="mt-4 text-xl text-slate-600 max-w-2xl mx-auto mb-12 font-medium">
+                    Analyze your resume, discover your perfect career domain, and practice with real-time AI mock interviews.
+                  </p>
+                </motion.div>
+
+                <AnimatePresence mode="wait">
+                  {showHero ? (
+                    <motion.div
+                      key="hero-button"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9, y: -20 }}
+                      className="flex justify-center"
+                    >
+                      <motion.button
+                        whileHover="hover"
+                        whileTap={{ scale: 0.95 }}
+                        onClick={() => setShowHero(false)}
+                        className="flex items-center gap-3 px-12 py-5 bg-indigo-600 text-white rounded-2xl font-black text-2xl hover:bg-indigo-700 transition-all shadow-2xl shadow-indigo-200 group"
+                      >
+                        Get Started
+                        <motion.div
+                          variants={{
+                            hover: { x: 10 }
+                          }}
+                          transition={{ type: 'spring', stiffness: 400, damping: 10 }}
+                        >
+                          <ArrowRight className="w-8 h-8" />
+                        </motion.div>
+                      </motion.button>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="resume-upload"
+                      initial={{ opacity: 0, y: 100 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ 
+                        type: 'spring',
+                        damping: 25,
+                        stiffness: 120,
+                        delay: 0.1
+                      }}
+                      className="max-w-4xl mx-auto"
+                    >
+                      <ResumeUpload 
+                        profile={profile}
+                        onAnalysisStart={() => setIsAnalyzing(true)} 
+                        onAnalysisComplete={(data, fileName) => handleAnalysisComplete(data, fileName)} 
+                        savedResumes={savedResumes}
+                        selectedSavedResume={selectedSavedResume}
+                        onSelectSavedResume={handleSelectResume}
+                        onContinueWithSaved={handleContinueWithSaved}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
 
         {isAnalyzing && (
-          <div className="flex flex-col items-center justify-center py-32 space-y-6">
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center py-32 space-y-6"
+          >
             <div className="relative w-24 h-24">
               <div className="absolute inset-0 border-4 border-indigo-100 rounded-full" />
-              <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin" />
+              <motion.div 
+                animate={{ rotate: 360 }}
+                transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent" 
+              />
             </div>
             <p className="text-lg font-medium text-slate-600">Processing...</p>
-          </div>
+          </motion.div>
         )}
 
         {analysis && !interviewConfig && !interviewResult && !showConfig && (
@@ -196,127 +321,19 @@ const App: React.FC = () => {
         )}
 
         {showConfig && analysis && (
-          <div className="max-w-3xl mx-auto bg-white p-10 rounded-3xl shadow-2xl border border-slate-100 animate-slide-up">
-            <h2 className="text-3xl font-bold text-slate-900 mb-8">Customize Your Mock Interview</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Select Domain</label>
-                  <select 
-                    value={selectedDomain}
-                    onChange={(e) => setSelectedDomain(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-slate-700 font-medium focus:ring-2 focus:ring-indigo-500 transition-all"
-                  >
-                    <option value={analysis.recommendedDomain.title}>Primary: {analysis.recommendedDomain.title}</option>
-                    {analysis.recommendedDomain.alternativeDomains.map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                    <option value="General Software Engineering">General Software Engineering</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Difficulty Level</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {['Junior', 'Mid-Level', 'Senior', 'Expert'].map(level => (
-                      <button 
-                        key={level}
-                        onClick={() => setSelectedDifficulty(level as any)}
-                        className={`px-3 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
-                          selectedDifficulty === level ? 'border-indigo-600 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600' : 'border-slate-200 hover:border-slate-300 text-slate-600'
-                        }`}
-                      >
-                        {level}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-3 uppercase tracking-wide">Number of Questions: <span className="text-indigo-600">{questionCount}</span></label>
-                  <input 
-                    type="range" 
-                    min="5" 
-                    max="15" 
-                    step="1"
-                    value={questionCount}
-                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
-                    onChange={(e) => setQuestionCount(parseInt(e.target.value))}
-                  />
-                  <div className="flex justify-between text-[10px] text-slate-400 mt-2 font-bold uppercase tracking-tighter">
-                    <span>Min: 5</span>
-                    <span>Max: 15</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Interview Mode</label>
-                  <div className="space-y-3">
-                    <button 
-                      onClick={() => setSelectedMode('Off-Campus')}
-                      className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${
-                        selectedMode === 'Off-Campus' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-5 h-5 rounded-full border-4 flex-shrink-0 ${selectedMode === 'Off-Campus' ? 'border-indigo-600 bg-white' : 'border-slate-300'}`} />
-                        <div>
-                          <p className={`font-bold ${selectedMode === 'Off-Campus' ? 'text-indigo-900' : 'text-slate-700'}`}>Off-Campus Mode</p>
-                          <p className="text-xs text-slate-500 mt-1">Focused purely on your selected domain, role & projects.</p>
-                        </div>
-                      </div>
-                    </button>
-
-                    <button 
-                      onClick={() => setSelectedMode('On-Campus')}
-                      className={`w-full p-4 rounded-2xl border-2 text-left transition-all ${
-                        selectedMode === 'On-Campus' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-100 hover:border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-5 h-5 rounded-full border-4 flex-shrink-0 ${selectedMode === 'On-Campus' ? 'border-indigo-600 bg-white' : 'border-slate-300'}`} />
-                        <div>
-                          <p className={`font-bold ${selectedMode === 'On-Campus' ? 'text-indigo-900' : 'text-slate-700'}`}>On-Campus Mode</p>
-                          <p className="text-xs text-slate-500 mt-1">Includes core CS (DSA, OS, DBMS, CN) + Domain + Projects.</p>
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="pt-4 space-y-4">
-                  <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Update Context</p>
-                    <ResumeUpload 
-                      profile={profile!}
-                      compact={true}
-                      onAnalysisStart={() => setIsAnalyzing(true)} 
-                      onAnalysisComplete={(data) => {
-                        handleAnalysisComplete(data);
-                        if (data) setSelectedDomain(data.recommendedDomain.title);
-                      }} 
-                    />
-                  </div>
-                  
-                  <button 
-                    onClick={handleLaunchInterview}
-                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-xl hover:-translate-y-1 active:scale-95"
-                  >
-                    Launch Live Session
-                  </button>
-                  <button 
-                    onClick={() => setShowConfig(false)}
-                    className="w-full py-2 mt-2 text-slate-400 hover:text-slate-600 text-sm font-medium transition-colors"
-                  >
-                    Go Back
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <InterviewConfigPage 
+            analysis={analysis}
+            savedResumes={savedResumes}
+            profile={profile!}
+            currentResumeName={currentResumeName || profile?.resumeName || 'Analyzed Context'}
+            onLaunch={handleLaunchInterview}
+            onCancel={() => setShowConfig(false)}
+            onUpdateAnalysis={(newAnalysis, fileName) => {
+              setAnalysis(newAnalysis);
+              if (fileName) setCurrentResumeName(fileName);
+            }}
+            onAnalysisStart={() => setIsAnalyzing(true)}
+          />
         )}
 
         {interviewConfig && !interviewResult && (
@@ -328,57 +345,87 @@ const App: React.FC = () => {
         )}
 
             {interviewResult && (
-              <div className="max-w-4xl mx-auto space-y-8 animate-slide-up">
+              <motion.div 
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="max-w-4xl mx-auto space-y-8"
+              >
                 <div className="bg-white p-12 rounded-3xl shadow-xl border border-slate-100 text-center">
                   <h2 className="text-4xl font-extrabold text-slate-900">Interview Evaluation</h2>
                   <div className="flex justify-center mt-10">
                     <div className="relative w-48 h-48">
                       <svg className="w-full h-full transform -rotate-90">
                         <circle cx="96" cy="96" r="80" stroke="currentColor" strokeWidth="16" fill="transparent" className="text-slate-100" />
-                        <circle 
+                        <motion.circle 
+                          initial={{ strokeDashoffset: 2 * Math.PI * 80 }}
+                          animate={{ strokeDashoffset: 2 * Math.PI * 80 * (1 - (interviewResult.accuracy || 0) / 100) }}
+                          transition={{ duration: 1.5, ease: "easeOut" }}
                           cx="96" cy="96" r="80" stroke="currentColor" strokeWidth="16" fill="transparent" 
                           strokeDasharray={2 * Math.PI * 80}
-                          strokeDashoffset={2 * Math.PI * 80 * (1 - (interviewResult.accuracy || 0) / 100)}
-                          className="text-indigo-600 transition-all duration-1000" 
+                          className="text-indigo-600" 
                         />
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-5xl font-black text-slate-900">{interviewResult.accuracy || 0}%</span>
+                        <motion.span 
+                          initial={{ opacity: 0, scale: 0.5 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ delay: 0.5 }}
+                          className="text-5xl font-black text-slate-900"
+                        >
+                          {interviewResult.accuracy || 0}%
+                        </motion.span>
                         <span className="text-xs font-bold text-slate-400 uppercase">Accuracy</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
-                    <div className="bg-slate-50 p-8 rounded-2xl">
+                    <motion.div 
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.3 }}
+                      className="bg-slate-50 p-8 rounded-2xl"
+                    >
                       <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
                         <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                         Knowledge Grasp
                       </h3>
                       <p className="text-slate-600 leading-relaxed">{interviewResult.knowledgeGrasp}</p>
-                    </div>
-                    <div className="bg-slate-50 p-8 rounded-2xl">
+                    </motion.div>
+                    <motion.div 
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.4 }}
+                      className="bg-slate-50 p-8 rounded-2xl"
+                    >
                       <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
                         <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                         Expression Analysis
                       </h3>
                       <p className="text-slate-600 leading-relaxed">{interviewResult.expressionAnalysis}</p>
-                    </div>
+                    </motion.div>
                   </div>
 
-                  <div className="mt-8 p-8 bg-indigo-50 rounded-2xl text-left border border-indigo-100">
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.6 }}
+                    className="mt-8 p-8 bg-indigo-50 rounded-2xl text-left border border-indigo-100"
+                  >
                      <h3 className="font-bold text-indigo-900 mb-2">Coach's Feedback</h3>
                      <p className="text-indigo-800 italic leading-relaxed">"{interviewResult.feedback}"</p>
-                  </div>
+                  </motion.div>
 
-                  <button 
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                     onClick={() => setInterviewResult(null)}
-                    className="mt-12 px-10 py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl"
+                    className="mt-12 px-10 py-4 bg-slate-900 text-white rounded-2xl font-bold transition-all shadow-xl"
                   >
                     Return to Dashboard
-                  </button>
+                  </motion.button>
                 </div>
-              </div>
+              </motion.div>
             )}
           </>
         )}
@@ -390,6 +437,7 @@ const App: React.FC = () => {
         </div>
       </footer>
     </div>
+    </ErrorBoundary>
   );
 };
 

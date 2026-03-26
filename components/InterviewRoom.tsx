@@ -4,6 +4,7 @@ import { InterviewConfig, InterviewResult, InterviewQuestion, UserProfile } from
 import { generateInterviewQuestions, evaluateFullInterview } from '../services/geminiService';
 import { db, auth } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface Props {
   config: InterviewConfig;
@@ -15,6 +16,7 @@ const InterviewRoom: React.FC<Props> = ({ config, profile, onFinish }) => {
   const [questions, setQuestions] = useState<InterviewQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [status, setStatus] = useState<'loading' | 'question' | 'recording' | 'reviewing' | 'submitting'>('loading');
+  const [error, setError] = useState<string | null>(null);
   const [answers, setAnswers] = useState<{ question: string, audioData: string }[]>([]);
   const [snapshots, setSnapshots] = useState<string[]>([]);
   const [monitoringStatus, setMonitoringStatus] = useState<'neutral' | 'analyzing' | 'detected'>('neutral');
@@ -50,7 +52,10 @@ const InterviewRoom: React.FC<Props> = ({ config, profile, onFinish }) => {
         }
       } catch (err) {
         console.error(err);
-        alert("Camera and Microphone access are required for the interview.");
+        if (mounted) {
+          setError("Camera and Microphone access are required for the interview. Please check your permissions.");
+          setStatus('question'); // Still move to question state so they can see the error
+        }
       }
     };
     init();
@@ -62,6 +67,14 @@ const InterviewRoom: React.FC<Props> = ({ config, profile, onFinish }) => {
       }
     };
   }, [config]);
+
+  // Ensure video stream is attached after loading state is finished
+  useEffect(() => {
+    if (status !== 'loading' && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(err => console.error("Video play failed:", err));
+    }
+  }, [status]);
 
   const captureSnapshot = () => {
     if (canvasRef.current && videoRef.current) {
@@ -190,10 +203,18 @@ const InterviewRoom: React.FC<Props> = ({ config, profile, onFinish }) => {
 
   if (status === 'loading') {
     return (
-      <div className="fixed inset-0 bg-slate-900 flex flex-col items-center justify-center text-white z-50">
-        <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4" />
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="fixed inset-0 bg-slate-900 flex flex-col items-center justify-center text-white z-50"
+      >
+        <motion.div 
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+          className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full mb-4" 
+        />
         <p className="text-xl font-medium tracking-tight">Initializing Career Lab & Facial Tracker...</p>
-      </div>
+      </motion.div>
     );
   }
 
@@ -211,13 +232,18 @@ const InterviewRoom: React.FC<Props> = ({ config, profile, onFinish }) => {
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col text-white overflow-hidden">
       <div className="h-1 bg-slate-800 w-full">
-        <div 
+        <motion.div 
+          initial={{ width: 0 }}
+          animate={{ width: `${((currentIndex + 1) / (questions.length || 1)) * 100}%` }}
           className="h-full bg-indigo-500 transition-all duration-500" 
-          style={{ width: `${((currentIndex + 1) / (questions.length || 1)) * 100}%` }} 
         />
       </div>
 
-      <header className="p-6 border-b border-white/5 flex justify-between items-center bg-slate-900/50 backdrop-blur-md">
+      <motion.header 
+        initial={{ y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        className="p-6 border-b border-white/5 flex justify-between items-center bg-slate-900/50 backdrop-blur-md"
+      >
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-bold text-indigo-400">{config.domain}</h2>
@@ -234,13 +260,31 @@ const InterviewRoom: React.FC<Props> = ({ config, profile, onFinish }) => {
             {config.difficulty}
           </span>
         </div>
-      </header>
+      </motion.header>
 
       <main className="flex-1 grid grid-cols-1 lg:grid-cols-5 h-[calc(100vh-84px)]">
         <div className="lg:col-span-3 p-8 flex flex-col bg-slate-900/20 relative">
-          <div className="relative flex-1 rounded-[40px] overflow-hidden bg-black border border-white/10 shadow-2xl group transition-all duration-700">
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="relative flex-1 rounded-[40px] overflow-hidden bg-black border border-white/10 shadow-2xl group transition-all duration-700"
+          >
             <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
             <canvas ref={canvasRef} className="hidden" width="320" height="240" />
+            
+            {error && (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-8 text-center">
+                <div className="max-w-xs">
+                  <div className="w-12 h-12 bg-rose-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg className="w-6 h-6 text-rose-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm font-bold text-white mb-2">Access Denied</p>
+                  <p className="text-xs text-slate-400">{error}</p>
+                </div>
+              </div>
+            )}
             
             {/* Visual Monitoring Overlay */}
             <div className="absolute inset-0 pointer-events-none border-[12px] border-indigo-500/10 transition-colors duration-300" 
@@ -253,7 +297,11 @@ const InterviewRoom: React.FC<Props> = ({ config, profile, onFinish }) => {
             <div className="absolute bottom-8 right-8 w-12 h-12 border-b-4 border-r-4 border-white/20" />
 
             <div className="absolute bottom-10 left-10 right-10 flex justify-between items-end">
-              <div className="flex items-center gap-4 bg-black/60 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/10 shadow-2xl">
+              <motion.div 
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                className="flex items-center gap-4 bg-black/60 backdrop-blur-xl px-6 py-3 rounded-2xl border border-white/10 shadow-2xl"
+              >
                 <div className={`w-4 h-4 rounded-full ${status === 'recording' ? 'bg-rose-500 animate-pulse' : 'bg-emerald-500'}`} />
                 <div>
                   <span className="text-xs font-black uppercase tracking-widest text-white block">
@@ -261,97 +309,158 @@ const InterviewRoom: React.FC<Props> = ({ config, profile, onFinish }) => {
                   </span>
                   <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Evaluation based on response & expression</span>
                 </div>
-              </div>
+              </motion.div>
             </div>
 
-            {status === 'recording' && (
-              <div className="absolute top-10 right-10 flex flex-col items-end gap-2">
-                 <div className="flex items-center gap-2 bg-rose-600 px-3 py-1 rounded-full animate-pulse">
-                    <div className="w-2 h-2 bg-white rounded-full" />
-                    <span className="text-[10px] font-black uppercase text-white">Recording</span>
-                 </div>
-                 <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Speak Clearly</span>
-              </div>
-            )}
-          </div>
+            <AnimatePresence>
+              {status === 'recording' && (
+                <motion.div 
+                  initial={{ x: 20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: 20, opacity: 0 }}
+                  className="absolute top-10 right-10 flex flex-col items-end gap-2"
+                >
+                   <div className="flex items-center gap-2 bg-rose-600 px-3 py-1 rounded-full animate-pulse">
+                      <div className="w-2 h-2 bg-white rounded-full" />
+                      <span className="text-[10px] font-black uppercase text-white">Recording</span>
+                   </div>
+                   <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Speak Clearly</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.div>
 
           <div className="mt-10 flex justify-center gap-6">
-            {status === 'question' && (
-              <button 
-                onClick={startRecording}
-                className="group flex items-center gap-4 px-12 py-6 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[24px] font-black text-2xl transition-all shadow-2xl hover:-translate-y-2 active:scale-95 border-b-8 border-indigo-800"
-              >
-                <div className="w-6 h-6 bg-white rounded-full group-hover:scale-125 transition-transform shadow-inner" />
-                START MY ANSWER
-              </button>
-            )}
-
-            {status === 'recording' && (
-              <button 
-                onClick={stopRecording}
-                className="flex items-center gap-4 px-12 py-6 bg-rose-600 hover:bg-rose-700 text-white rounded-[24px] font-black text-2xl transition-all shadow-2xl active:scale-95 border-b-8 border-rose-800"
-              >
-                <div className="w-6 h-6 bg-white rounded-lg animate-pulse" />
-                STOP RECORDING
-              </button>
-            )}
-
-            {status === 'reviewing' && (
-              <div className="flex gap-6">
-                <button 
-                  onClick={reAttempt}
-                  className="px-10 py-6 bg-slate-800 hover:bg-slate-700 text-white rounded-[24px] font-black text-2xl transition-all border border-white/10 active:scale-95 border-b-8 border-slate-900"
+            <AnimatePresence mode="wait">
+              {status === 'question' && (
+                <motion.button 
+                  key="start-btn"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  whileHover={{ scale: 1.05, y: -5 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={startRecording}
+                  className="group flex items-center gap-4 px-12 py-6 bg-indigo-600 text-white rounded-[24px] font-black text-2xl transition-all shadow-2xl border-b-8 border-indigo-800"
                 >
-                  RE-ATTEMPT
-                </button>
-                <button 
-                  onClick={submitAnswer}
-                  className="px-12 py-6 bg-emerald-600 hover:bg-emerald-700 text-white rounded-[24px] font-black text-2xl transition-all shadow-2xl hover:-translate-y-2 active:scale-95 border-b-8 border-emerald-800"
-                >
-                  SUBMIT ANSWER
-                </button>
-              </div>
-            )}
+                  <div className="w-6 h-6 bg-white rounded-full group-hover:scale-125 transition-transform shadow-inner" />
+                  START MY ANSWER
+                </motion.button>
+              )}
 
-            {status === 'submitting' && (
-              <button disabled className="px-12 py-6 bg-slate-800 text-slate-500 rounded-[24px] font-black text-2xl cursor-not-allowed flex items-center gap-4 border-b-8 border-slate-900">
-                <div className="w-6 h-6 border-4 border-slate-500 border-t-transparent rounded-full animate-spin" />
-                {currentIndex < questions.length - 1 ? 'PROCESSING...' : 'EVALUATING...'}
-              </button>
-            )}
+              {status === 'recording' && (
+                <motion.button 
+                  key="stop-btn"
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={stopRecording}
+                  className="flex items-center gap-4 px-12 py-6 bg-rose-600 text-white rounded-[24px] font-black text-2xl transition-all shadow-2xl border-b-8 border-rose-800"
+                >
+                  <div className="w-6 h-6 bg-white rounded-lg animate-pulse" />
+                  STOP RECORDING
+                </motion.button>
+              )}
+
+              {status === 'reviewing' && (
+                <motion.div 
+                  key="review-btns"
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: 20, opacity: 0 }}
+                  className="flex gap-6"
+                >
+                  <motion.button 
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={reAttempt}
+                    className="px-10 py-6 bg-slate-800 text-white rounded-[24px] font-black text-2xl transition-all border border-white/10 border-b-8 border-slate-900"
+                  >
+                    RE-ATTEMPT
+                  </motion.button>
+                  <motion.button 
+                    whileHover={{ scale: 1.05, y: -5 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={submitAnswer}
+                    className="px-12 py-6 bg-emerald-600 text-white rounded-[24px] font-black text-2xl transition-all shadow-2xl border-b-8 border-emerald-800"
+                  >
+                    SUBMIT ANSWER
+                  </motion.button>
+                </motion.div>
+              )}
+
+              {status === 'submitting' && (
+                <motion.button 
+                  key="submitting-btn"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  disabled 
+                  className="px-12 py-6 bg-slate-800 text-slate-500 rounded-[24px] font-black text-2xl cursor-not-allowed flex items-center gap-4 border-b-8 border-slate-900"
+                >
+                  <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ repeat: Infinity, duration: 1, ease: "linear" }}
+                    className="w-6 h-6 border-4 border-slate-500 border-t-transparent rounded-full" 
+                  />
+                  {currentIndex < questions.length - 1 ? 'PROCESSING...' : 'EVALUATING...'}
+                </motion.button>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
-        <div className="lg:col-span-2 p-12 bg-slate-900 border-l border-white/5 flex flex-col justify-center relative">
-          {currentQ && (
-            <div className="space-y-10 animate-fade-in">
-              <div className="space-y-6">
-                <span className={`inline-block border px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest ${getTypeBadgeClass(currentQ.type)}`}>
-                  {currentQ.type.replace('-', ' ')}
-                </span>
-                <h1 className="text-5xl font-black text-white leading-[1.1] tracking-tight">
-                  {currentQ.text}
-                </h1>
-              </div>
-
-              <div className="p-8 bg-white/5 rounded-[32px] border border-white/10 shadow-inner">
-                <p className="text-slate-400 text-lg font-medium leading-relaxed">
-                  {currentQ.type === 'core-cs' 
-                    ? "Focus on technical accuracy. We are monitoring your articulation and structural logic." 
-                    : "The STAR method is recommended. Maintain eye contact with the camera for high confidence marks."}
-                </p>
-              </div>
-
-              {recordedAudioUrl && status === 'reviewing' && (
-                <div className="p-8 bg-indigo-500/10 rounded-[32px] border border-indigo-500/20 animate-slide-up">
-                  <p className="text-indigo-400 font-black text-xs uppercase tracking-widest mb-4">Playback Review</p>
-                  <audio src={recordedAudioUrl} controls className="w-full h-12" />
-                  <p className="text-[10px] text-slate-500 mt-4 uppercase font-black tracking-tighter">Your facial expressions during this recording have been logged.</p>
+        <motion.div 
+          initial={{ x: 50, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          className="lg:col-span-2 p-12 bg-slate-900 border-l border-white/5 flex flex-col justify-center relative"
+        >
+          <AnimatePresence mode="wait">
+            {currentQ && (
+              <motion.div 
+                key={currentIndex}
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -20, opacity: 0 }}
+                className="space-y-10"
+              >
+                <div className="space-y-6">
+                  <motion.span 
+                    initial={{ scale: 0.8 }}
+                    animate={{ scale: 1 }}
+                    className={`inline-block border px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest ${getTypeBadgeClass(currentQ.type)}`}
+                  >
+                    {currentQ.type.replace('-', ' ')}
+                  </motion.span>
+                  <h1 className="text-5xl font-black text-white leading-[1.1] tracking-tight">
+                    {currentQ.text}
+                  </h1>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+
+                <div className="p-8 bg-white/5 rounded-[32px] border border-white/10 shadow-inner">
+                  <p className="text-slate-400 text-lg font-medium leading-relaxed">
+                    {currentQ.type === 'core-cs' 
+                      ? "Focus on technical accuracy. We are monitoring your articulation and structural logic." 
+                      : "The STAR method is recommended. Maintain eye contact with the camera for high confidence marks."}
+                  </p>
+                </div>
+
+                {recordedAudioUrl && status === 'reviewing' && (
+                  <motion.div 
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="p-8 bg-indigo-500/10 rounded-[32px] border border-indigo-500/20"
+                  >
+                    <p className="text-indigo-400 font-black text-xs uppercase tracking-widest mb-4">Playback Review</p>
+                    <audio src={recordedAudioUrl} controls className="w-full h-12" />
+                    <p className="text-[10px] text-slate-500 mt-4 uppercase font-black tracking-tighter">Your facial expressions during this recording have been logged.</p>
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
       </main>
     </div>
   );

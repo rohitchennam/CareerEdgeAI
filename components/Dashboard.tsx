@@ -8,9 +8,10 @@ interface Props {
   type: 'resumes' | 'interviews';
   onSelectResume: (resume: SavedResume) => void;
   onSelectInterview: (interview: SavedInterview) => void;
+  onAddResume?: () => void;
 }
 
-const Dashboard: React.FC<Props> = ({ type, onSelectResume, onSelectInterview }) => {
+const Dashboard: React.FC<Props> = ({ type, onSelectResume, onSelectInterview, onAddResume }) => {
   const [resumes, setResumes] = useState<SavedResume[]>([]);
   const [interviews, setInterviews] = useState<SavedInterview[]>([]);
   const [loading, setLoading] = useState(true);
@@ -31,6 +32,9 @@ const Dashboard: React.FC<Props> = ({ type, onSelectResume, onSelectInterview })
       unsubResumes = onSnapshot(resumesQuery, (snapshot) => {
         setResumes(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SavedResume)));
         setLoading(false);
+      }, (error) => {
+        console.error("Resumes snapshot error:", error);
+        setLoading(false);
       });
     }
 
@@ -42,6 +46,9 @@ const Dashboard: React.FC<Props> = ({ type, onSelectResume, onSelectInterview })
       );
       unsubInterviews = onSnapshot(interviewsQuery, (snapshot) => {
         setInterviews(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SavedInterview)));
+        setLoading(false);
+      }, (error) => {
+        console.error("Interviews snapshot error:", error);
         setLoading(false);
       });
     }
@@ -89,7 +96,17 @@ const Dashboard: React.FC<Props> = ({ type, onSelectResume, onSelectInterview })
               <FileText className="w-6 h-6 text-indigo-600" />
               My Resumes
             </h2>
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{resumes.length} Saved</span>
+            <div className="flex items-center gap-4">
+              {onAddResume && (
+                <button 
+                  onClick={onAddResume}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-sm hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-95"
+                >
+                  <span className="text-lg">+</span> Add
+                </button>
+              )}
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{resumes.length} Saved</span>
+            </div>
           </div>
           
           {resumes.length === 0 ? (

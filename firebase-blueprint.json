@@ -13,9 +13,13 @@
         "targetRole": { "type": "string", "description": "User's desired job title." },
         "experienceYears": { "type": "number", "description": "Years of professional experience." },
         "skills": { "type": "array", "items": { "type": "string" }, "description": "List of key skills." },
+        "resumeName": { "type": "string", "description": "Name of the most recently uploaded resume." },
+        "resumeUrl": { "type": "string", "description": "URL of the resume (if stored in storage)." },
+        "resumeAnalysis": { "type": "object", "description": "The analysis of the most recent resume." },
+        "role": { "type": "string", "enum": ["user", "admin"], "description": "User's role for RBAC." },
         "createdAt": { "type": "string", "format": "date-time", "description": "When the user account was created." }
       },
-      "required": ["uid", "email", "currentRole", "targetRole"]
+      "required": ["uid", "email", "createdAt"]
     },
     "Resume": {
       "title": "Resume Analysis",
