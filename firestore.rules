@@ -58,9 +58,9 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin') ||
-          (request.auth.token.email == "rohitchennam1@gmail.com" && request.auth.token.email_verified == true));
+        ((request.auth.token.email == "rohitchennam1@gmail.com" && request.auth.token.email_verified == true) ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin'));
     }
 
     function isValidEmail(email) {
@@ -70,7 +70,7 @@ service cloud.firestore {
 
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
-             hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'currentRole', 'targetRole', 'experienceYears', 'skills', 'createdAt', 'resumeName', 'role']) &&
+             hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'currentRole', 'targetRole', 'experienceYears', 'skills', 'createdAt', 'resumeName', 'resumeUrl', 'resumeAnalysis', 'role']) &&
              data.uid is string && data.uid.size() > 0 &&
              data.email is string && isValidEmail(data.email) &&
              (!('displayName' in data) || (data.displayName is string && data.displayName.size() < 100)) &&
@@ -80,6 +80,8 @@ service cloud.firestore {
              (!('experienceYears' in data) || (data.experienceYears is number && data.experienceYears >= 0)) &&
              (!('skills' in data) || (data.skills is list && data.skills.size() < 50)) &&
              (!('resumeName' in data) || (data.resumeName is string && data.resumeName.size() < 200)) &&
+             (!('resumeUrl' in data) || (data.resumeUrl is string && data.resumeUrl.size() < 500)) &&
+             (!('resumeAnalysis' in data) || (data.resumeAnalysis is map)) &&
              (!('role' in data) || (data.role in ['user', 'admin'])) &&
              data.createdAt is timestamp;
     }

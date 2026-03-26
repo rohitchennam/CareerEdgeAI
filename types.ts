@@ -9,6 +9,7 @@ export interface UserProfile {
   experienceYears: number;
   skills: string[];
   resumeUrl?: string;
+  resumeName?: string;
   resumeAnalysis?: ResumeAnalysis;
   createdAt: any;
 }
